@@ -3,17 +3,16 @@
 import json, urllib2
 from xdg import BaseDirectory as basedir
 from argparse import ArgumentParser
-import os.path as osp
-from sys import exit
+import os.path, sys
 
 def pgist_save_config(config):
     conf_dir = basedir.save_config_path("pgist")
-    json.dump(config, open(osp.join(conf_dir, "pgist.conf"), "w"), indent=4)
+    json.dump(config, open(os.path.join(conf_dir, "pgist.conf"), "w"), indent=4)
 
 def pgist_load_config():
     config = {}
     for config_dir in basedir.load_config_paths("pgist"):
-        config.update(json.load(open(osp.join(config_dir, "pgist.conf"))))
+        config.update(json.load(open(os.path.join(config_dir, "pgist.conf"))))
     return config
 
 def pgist_post(filenames, private=False, anon=True, description="", extension=""):
@@ -25,7 +24,9 @@ def pgist_post(filenames, private=False, anon=True, description="", extension=""
         data["description"] = description
     for filename in filenames:
         try:
-            data["files"][osp.basename(filename)+extension] = {"content": open(filename, "rb").read()}
+            data["files"][os.path.basename(filename)+extension] = {
+                    "content": open(filename, "rb").read()
+                }
         except IOError as e:
             print("File '{}' cannot be loaded: {}.".format(filename, e.strerror))
     if not data["files"]:
@@ -48,18 +49,25 @@ def pgist_post(filenames, private=False, anon=True, description="", extension=""
     print(json_resp['html_url'])
 
 if __name__ == '__main__':
-    parser = ArgumentParser(description="Console interface to Github Gist service")
-    parser.add_argument("files", metavar="file", nargs="+", help="Files to paste")
-    parser.add_argument("-p", "--private", action="store_true", help="Create private paste")
-    parser.add_argument("-a", "--anon", action="store_false", help="Create anonimous paste")
-    parser.add_argument("-d", "--description", help="Description for the paste")
-    parser.add_argument("-x", "--extension", default="", help="Extension of the file instead the default one")
+    parser = ArgumentParser(
+                    description="Console interface to Github Gist service")
+    parser.add_argument("files", metavar="file", nargs="+",
+                    help="Files to paste")
+    parser.add_argument("-p", "--private", action="store_true",
+                    help="Create private paste")
+    parser.add_argument("-a", "--anon", action="store_false",
+                    help="Create anonymous paste")
+    parser.add_argument("-d", "--description",
+                    help="Description for the paste")
+    parser.add_argument("-x", "--extension", default="",
+                    help="Add this extension to all file names")
 
     args = parser.parse_args()
 
-    if pgist_post(args.files, args.private, args.anon, args.description, args.extension):
-        exit(0)
+    if pgist_post(args.files, args.private, args.anon,
+                    args.description, args.extension):
+        sys.exit(0)
     else:
-        exit(1)
+        sys.exit(1)
 
 # vim: set ft=python
