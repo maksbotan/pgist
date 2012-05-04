@@ -3,7 +3,26 @@
 import json, urllib2, base64
 from xdg import BaseDirectory as basedir
 from argparse import ArgumentParser
-import os.path, sys
+import os.path, sys, getpass
+
+class AuthError(Exception): pass
+
+def pgist_request_helper(uri, data, basic_auth="", auth_token=""):
+    json_req = json.dumps(data, encoding="utf-8")
+    if auth_token:
+        uri = "{}?access_token={}".format(uri, auth_token)
+
+    req = urllib2.Request(uri, data=json_req)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+    if basic_auth:
+        req.add_header("Authorization", "Basic {}".format(
+                                                base64.b64encode(basic_auth)))
+
+    #Errors from the following are caught by calling code
+    response = urllib2.urlopen(req)
+    json_resp = json.load(response, encoding="utf-8")
+
+    return json_resp
 
 def pgist_save_config(config):
     conf_dir = basedir.save_config_path("pgist")
@@ -15,22 +34,37 @@ def pgist_load_config():
         config.update(json.load(open(os.path.join(config_dir, "pgist.conf"))))
     return config
 
-def pgist_request_helper(uri, data, basic_auth="", auth_token=""):
-    json_req = json.dumps(data, encoding="utf-8")
-    req = urllib2.Request(uri, data=json_req)
-    req.add_header("Content-Type", "application/json; charset=utf-8")
-    if basic_auth:
-        req.add_header("Authorization", "Basic {}".format(base64.b64encode(auth)))
-    if auth_token:
-        uri = "{}?access_token={}".format(uri, auth_token)
+def pgist_initialize_config(config):
+    print("You are about to get access token for Github Gist service")
+    print("Please note, your username and password won't be saved")
+    username = raw_input("Please enter your Github username: ")
+    password = getpass.getpass("Please enter your Github password: ")
+    basic_auth = "{}:{}".format(username, password)
 
-    #Errors from the following are caught by calling code
-    response = urllib2.urlopen(req)
-    json_resp = json.load(response, encoding="utf-8")
+    data = {"scopes": ["gist"], "note": "pgist client"}
+    try:
+        response = pgist_request_helper(
+                                "https://api.github.com/authorizations",
+                                data,
+                                basic_auth=basic_auth)
+    except urllib2.HTTPError as e:
+        print("Something went wrong while requesting auth token: {} {}".format(e.code, e.reason))
+        raise AuthError()
+    except ValueError:
+        print("Something went wrong while requesting auth token")
+        raise AuthError()
 
-    return json_resp
+    config["auth_token"] = response["token"]
+    pgist_save_config(config)
 
-def pgist_post(filenames, private=False, anon=True, description="", extension=""):
+def pgist_handle_auth():
+    config = pgist_load_config()
+    if not config:
+        pgist_initialize_config(config)
+    return config["auth_token"]
+
+def pgist_post(filenames, private=False, auth=False,
+               description="", extension=""):
     if extension and not extension.startswith("."):
         extension = "."+extension
 
@@ -48,8 +82,19 @@ def pgist_post(filenames, private=False, anon=True, description="", extension=""
         print("No files can be loaded, exit.")
         return 1
 
+    if auth:
+        try:
+            auth_token = pgist_handle_auth()
+        except AuthError:
+            return 1
+    else:
+        auth_token = ""
+
     try:
-        json_resp = pgist_request_helper("https://api.github.com/gists", data)
+        json_resp = pgist_request_helper(
+                                         "https://api.github.com/gists",
+                                         data,
+                                         auth_token=auth_token)
     except urllib2.HTTPError as e:
         print("Could not paste: {} {}.".format(e.code, e.reason))
         return 1
@@ -67,8 +112,8 @@ if __name__ == '__main__':
                     help="Files to paste")
     parser.add_argument("-p", "--private", action="store_true",
                     help="Create private paste")
-    parser.add_argument("-a", "--anon", action="store_false",
-                    help="Create anonymous paste")
+    parser.add_argument("-a", "--auth", action="store_true",
+                    help="Use authentication")
     parser.add_argument("-d", "--description",
                     help="Description for the paste")
     parser.add_argument("-x", "--extension", default="",
