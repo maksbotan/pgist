@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import json, urllib2
+import json, urllib2, base64
 from xdg import BaseDirectory as basedir
 from argparse import ArgumentParser
 import os.path, sys
@@ -14,6 +14,21 @@ def pgist_load_config():
     for config_dir in basedir.load_config_paths("pgist"):
         config.update(json.load(open(os.path.join(config_dir, "pgist.conf"))))
     return config
+
+def pgist_request_helper(uri, data, basic_auth="", auth_token=""):
+    json_req = json.dumps(data, encoding="utf-8")
+    req = urllib2.Request(uri, data=json_req)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+    if basic_auth:
+        req.add_header("Authorization", "Basic {}".format(base64.b64encode(auth)))
+    if auth_token:
+        uri = "{}?access_token={}".format(uri, auth_token)
+
+    #Errors from the following are caught by calling code
+    response = urllib2.urlopen(req)
+    json_resp = json.load(response, encoding="utf-8")
+
+    return json_resp
 
 def pgist_post(filenames, private=False, anon=True, description="", extension=""):
     if extension and not extension.startswith("."):
@@ -33,15 +48,11 @@ def pgist_post(filenames, private=False, anon=True, description="", extension=""
         print("No files can be loaded, exit.")
         return 1
 
-    json_req = json.dumps(data, encoding="utf-8")
-    req = urllib2.Request("https://api.github.com/gists", data=json_req)
     try:
-        response = urllib2.urlopen(req)
+        json_resp = pgist_request_helper("https://api.github.com/gists", data)
     except urllib2.HTTPError as e:
         print("Could not paste: {} {}.".format(e.code, e.reason))
         return 1
-    try:
-        json_resp = json.load(response)
     except ValueError:
         print("GitHub response cannot be parsed, exit.")
         return 1
