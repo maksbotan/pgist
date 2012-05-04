@@ -72,12 +72,15 @@ def pgist_post(filenames, private=False, auth=False,
     if description:
         data["description"] = description
     for filename in filenames:
-        try:
-            data["files"][os.path.basename(filename)+extension] = {
-                    "content": open(filename, "rb").read()
-                }
-        except IOError as e:
-            print("File '{}' cannot be loaded: {}.".format(filename, e.strerror))
+        if filename == "-":
+            data["files"]["stdin"+extension] = {"content": sys.stdin.read()}
+        else:
+            try:
+                data["files"][os.path.basename(filename)+extension] = {
+                        "content": open(filename, "rb").read()
+                    }
+            except IOError as e:
+                print("File '{}' cannot be loaded: {}.".format(filename, e.strerror))
     if not data["files"]:
         print("No files can be loaded, exit.")
         return 1
@@ -91,8 +94,7 @@ def pgist_post(filenames, private=False, auth=False,
         auth_token = ""
 
     try:
-        json_resp = pgist_request_helper(
-                                         "https://api.github.com/gists",
+        json_resp = pgist_request_helper("https://api.github.com/gists",
                                          data,
                                          auth_token=auth_token)
     except urllib2.HTTPError as e:
@@ -108,7 +110,7 @@ def pgist_post(filenames, private=False, auth=False,
 if __name__ == '__main__':
     parser = ArgumentParser(
                     description="Console interface to Github Gist service")
-    parser.add_argument("filenames", metavar="file", nargs="+",
+    parser.add_argument("filenames", metavar="file", nargs="*", default=["-"],
                     help="Files to paste")
     parser.add_argument("-p", "--private", action="store_true",
                     help="Create private paste")
